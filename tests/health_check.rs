@@ -1,7 +1,8 @@
-use sqlx::PgPool;
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
 use uuid::Uuid;
-use zero2prod::configuration::get_configuration;
+use zero2prod::configuration::{get_configuration, DatabaseSettings};
+use zero2prod::startup::run;
 
 pub struct TestApp {
     pub address: String,
@@ -18,11 +19,8 @@ async fn spawn_app() -> TestApp {
     configuration.database.database_name = Uuid::new_v4().to_string();
     let connection_pool = configure_database(&configuration.database).await;
 
-    let server =
-        zero2prod::startup::run(listener, connection_pool.clone()).expect("Failed to bind address");
-
+    let server = run(listener, connection_pool.clone()).expect("Failed to bind address");
     let _ = tokio::spawn(server);
-
     TestApp {
         address,
         db_pool: connection_pool,
@@ -30,24 +28,23 @@ async fn spawn_app() -> TestApp {
 }
 
 pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
-    // Create
+    // Create database
     let mut connection = PgConnection::connect(&config.connection_string_without_db())
         .await
         .expect("Failed to connect to Postgres");
     connection
-        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
+        .execute(&*format!(r#"CREATE DATABASE "{}";"#, config.database_name))
         .await
         .expect("Failed to create database.");
 
-    // Migrate
+    // Migrate database
     let connection_pool = PgPool::connect(&config.connection_string())
         .await
-        .expect("Failed to connect to Postgres");
-
+        .expect("Failed to connect to Postgres.");
     sqlx::migrate!("./migrations")
         .run(&connection_pool)
         .await
-        .expect("Failed to migrate the database.");
+        .expect("Failed to migrate the database");
 
     connection_pool
 }
@@ -60,6 +57,7 @@ async fn health_check_works() {
 
     // Act
     let response = client
+        // Use the returned application address
         .get(&format!("{}/health_check", &app.address))
         .send()
         .await
@@ -75,9 +73,9 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     // Arrange
     let app = spawn_app().await;
     let client = reqwest::Client::new();
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
     // Act
-    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
         .post(&format!("{}/subscriptions", &app.address))
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -89,7 +87,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     // Assert
     assert_eq!(200, response.status().as_u16());
 
-    let saved = sqlx::query("SELECT email, name FROM subscriptions")
+    let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
         .fetch_one(&app.db_pool)
         .await
         .expect("Failed to fetch saved subscription.");
@@ -113,7 +111,7 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
         // Act
         let response = client
             .post(&format!("{}/subscriptions", &app.address))
-            .header("Content_Type", "application/x-wwww-form-urlencoded")
+            .header("Content-Type", "application/x-www-form-urlencoded")
             .body(invalid_body)
             .send()
             .await
@@ -123,7 +121,8 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
         assert_eq!(
             400,
             response.status().as_u16(),
-            "The API did not fail with 400 Bad Request when the paylad was {}.",
+            // Additional customised error message on test failure
+            "The API did not fail with 400 Bad Request when the payload was {}.",
             error_message
         );
     }
