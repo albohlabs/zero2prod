@@ -1,0 +1,3 @@
+application: 
+  # accept only connections coming from the same machine
+  host: 127.0.0.1

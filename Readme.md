@@ -7,10 +7,14 @@ cargo install
 ./scripts/init.sh
 ```
 
-## Build Docker Image
+## Docker Image
 
 ```bash
+# build
 podman build --tag zero2prod --file Dockerfile .
+
+# run
+podman run -p 8000:8000 zero2prod
 ```
 
 ## Update SQLx query metadata
