@@ -1,6 +1,5 @@
 # Builder stage
-FROM rust:1.76 as builder
-
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
 WORKDIR /app
 
 RUN apt-get -y update \
@@ -9,9 +8,20 @@ RUN apt-get -y update \
   && apt-get clean -y \
   && rm -rf /var/lib/apt/lists/*
 
+FROM chef as planner
+COPY . .
+# Compute a lock-like file for our project
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef as builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+# Up to this point, if our dependency tree stays the same,
+# all layers should be cached
 COPY . .
 
 ENV SQLX_OFFLINE true
+# Build our project
 RUN cargo build --release
 
 # Runtime stage
@@ -33,4 +43,4 @@ COPY --from=builder /app/target/release/zero2prod zero2prod
 COPY configuration configuration
 
 ENV APP_ENVIRONMENT production
-ENTRYPOINT ["./target/release/zero2prod"]
+ENTRYPOINT ["./zero2prod"]
