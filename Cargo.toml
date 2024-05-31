@@ -44,4 +44,5 @@ validator = "0.16.1"
 [dev-dependencies]
 claims = "0.7.1"
 fake = "2.9.2"
+linkify = "0.10.0"
 wiremock = "0.6.0"
