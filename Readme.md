@@ -28,8 +28,8 @@ cargo sqlx prepare --workspace
 ```bash
 cargo install bunyan
 
-# sqlx logs are a bit spammy, cutting them out to reduce noise
-export RUST_LOG="sqlx=error,info"
-export TEST_LOG=true
-cargo t <test_function> | bunyan
+TEST_LOG=true RUST_LOG="sqlx=error,info" cargo t <test_function> | bunyan
+
+TEST_LOG=true cargo test --quiet --release \
+  newsletters_are_delivered | grep "VERIFY PASSWORD" | bunyan
 ```
